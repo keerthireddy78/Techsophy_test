@@ -18,7 +18,7 @@ The dataset used contains **10,000 rows** of policy data.
 - Correlation matrix of key risk factors
 - Stress testing by region
 - Machine Learning model (Logistic Regression) for risk prediction
-- Interactive visualizations (bar charts, pie charts, heatmaps)
+- Visualizations (bar charts, pie charts, heatmaps)
 
 ## Architecture
 
