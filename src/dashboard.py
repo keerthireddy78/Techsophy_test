@@ -9,6 +9,7 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.metrics import classification_report, confusion_matrix
 
 def load_data(path):
+    """Load data and map Claims Severity to numeric scale."""
     df = pd.read_csv(path)
     severity_map = {'Low': 0, 'Medium': 1, 'High': 2}
     df["Claims_Severity_Numeric"] = df["Claims_Severity"].map(severity_map)
@@ -31,8 +32,10 @@ def show_aggregation(df):
 def show_concentration(df):
     st.subheader("🔹 Premium Concentration by Policy Type")
     total_premium = df["Premium_Amount"].sum()
-    concentration = df.groupby("Policy_Type")["Premium_Amount"].sum() / total_premium * 100
-    concentration = concentration.reset_index().rename(columns={"Premium_Amount": "Premium_Percentage"})
+    concentration = (
+        df.groupby("Policy_Type")["Premium_Amount"].sum() / total_premium * 100
+    ).reset_index().rename(columns={"Premium_Amount": "Premium_Percentage"})
+    
     st.dataframe(concentration)
 
     fig, ax = plt.subplots()
@@ -48,7 +51,7 @@ def show_correlation(df):
     st.subheader("🔹 Correlation Matrix")
     numeric_df = df[["Premium_Amount", "Credit_Score", "Claims_Frequency", "Claims_Severity_Numeric"]]
     corr = numeric_df.corr()
-
+    
     st.dataframe(corr)
 
     fig, ax = plt.subplots()
@@ -60,51 +63,67 @@ def show_stress_test(df):
     st.subheader("🔹 Stress Test by Region")
     region = st.selectbox("Select Region", df["Region"].unique())
     affected = df[df["Region"] == region]
-    st.write(f"Potential Premium at Risk: {affected['Premium_Amount'].sum()}")
-    st.write(f"Affected Policies: {len(affected)}")
+    st.write(f"💰 **Potential Premium at Risk:** {affected['Premium_Amount'].sum():,.2f}")
+    st.write(f"📄 **Affected Policies:** {len(affected)}")
 
 def train_ml_model(df):
     st.subheader("🔹 ML Risk Prediction")
 
-    df["High_Risk"] = (df["Claims_Frequency"] > 0).astype(int)
+    # Target: High Risk if Claims_Frequency > 0
+    df["High_Risk_Label"] = np.where(df["Claims_Frequency"] > 0, "High Risk", "Low Risk")
+    y = df["High_Risk_Label"]
+
+    # Features
     X = df[["Age", "Credit_Score", "Premium_Amount", "Claims_Severity_Numeric"]]
-    
+
+    # Encode Marital_Status
     enc = OneHotEncoder(drop='first')
     marital_encoded = enc.fit_transform(df[["Marital_Status"]]).toarray()
     marital_cols = enc.get_feature_names_out(["Marital_Status"])
     marital_df = pd.DataFrame(marital_encoded, columns=marital_cols, index=df.index)
     X = pd.concat([X, marital_df], axis=1)
 
-    y = df["High_Risk"]
+    # Train-Test Split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+    # Train Model
     model = LogisticRegression(max_iter=1000)
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)
+
+    # Confusion Matrix
     st.text("Confusion Matrix")
-    st.write(confusion_matrix(y_test, y_pred))
+    conf_df = pd.DataFrame(
+        confusion_matrix(y_test, y_pred),
+        index=["Actual Low Risk", "Actual High Risk"],
+        columns=["Predicted Low Risk", "Predicted High Risk"]
+    )
+    st.dataframe(conf_df)
 
+    # Classification Report
     st.text("Classification Report")
-    st.text(classification_report(y_test, y_pred))
+    st.text(classification_report(y_test, y_pred, target_names=["Low Risk", "High Risk"]))
 
-    # Visualize risk probability
-    df["Predicted_Risk"] = model.predict_proba(X)[:,1]
+    # Risk Probability Visualization
+    df["Predicted_Risk_Prob"] = model.predict_proba(X)[:, 1]
     st.subheader("Predicted Risk Probability Distribution")
     fig, ax = plt.subplots()
-    sns.histplot(df["Predicted_Risk"], bins=20, kde=True, ax=ax)
-    ax.set_xlabel("Predicted Risk Probability")
+    sns.histplot(df["Predicted_Risk_Prob"], bins=20, kde=True, ax=ax)
+    ax.set_xlabel("Predicted High Risk Probability")
     st.pyplot(fig)
 
 def main():
     st.title("📊 Insurance Portfolio Risk Management Dashboard")
 
-    df = load_data(r"data/sample_data.csv")  # Update the path if needed
+    df = load_data("data/sample_data.csv")
 
     st.sidebar.header("📌 Dashboard Sections")
-    sections = st.sidebar.multiselect("Select Sections to Display", 
-                                      ["Data Preview", "Aggregation", "Concentration", "Correlation", "Stress Test", "ML Risk Prediction"],
-                                      default=["Aggregation", "Concentration", "Correlation"])
+    sections = st.sidebar.multiselect(
+        "Select Sections to Display",
+        ["Data Preview", "Aggregation", "Concentration", "Correlation", "Stress Test", "ML Risk Prediction"],
+        default=["Aggregation", "Concentration", "Correlation"]
+    )
 
     if "Data Preview" in sections:
         st.subheader("🔹 Data Preview")
